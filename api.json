@@ -1,0 +1,80 @@
+{
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/",
+      "type": "ui",
+      "description": "Show the hub with 4 evolution options (weekly, monthly, deep dive, history)."
+    },
+    {
+      "method": "GET",
+      "path": "/scan_ui",
+      "type": "ui",
+      "description": "Run a knowledge base scan with 4-dimension quality scoring and diversity selection.",
+      "params": {
+        "range_type": {"type": "string", "description": "Time range: week, month, custom. Default: week."},
+        "start_date": {"type": "string", "description": "Start date in YYYY-MM-DD, used when range_type=custom."},
+        "end_date": {"type": "string", "description": "End date in YYYY-MM-DD, used when range_type=custom."},
+        "save": {"type": "string", "description": "Whether to save the report as a note: true or false. Default: true."}
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/connections_ui",
+      "type": "ui",
+      "description": "3-layer connection discovery: TF-IDF cosine filter → LLM relation classification → cross-domain bridging.",
+      "params": {
+        "report_id": {"type": "string", "description": "Optional scan report note id. If empty, uses the latest scan from local state."}
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/actions_ui",
+      "type": "ui",
+      "description": "Generate a 3-7 item action list with 3 action types (supplement/create/connect).",
+      "params": {
+        "report_id": {"type": "string", "description": "Optional scan report note id. If empty, uses the latest from local state."}
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/actions_ui",
+      "type": "ui",
+      "description": "Execute an action: show execution form (execute=true) or create note (execute=true + confirm=true). Never modifies original notes, always creates new + references.",
+      "params": {
+        "report_id": {"type": "string", "description": "Scan report note id."},
+        "execute": {"type": "string", "description": "If 'true', shows execution form for the action at action_index."},
+        "confirm": {"type": "string", "description": "If 'true', confirms execution and creates the note."},
+        "action_index": {"type": "string", "description": "0-based index of the action to execute."}
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/deep_dive_ui",
+      "type": "ui",
+      "description": "Show the deep dive input form (topic + time range). Submits to POST /deep_dive_ui."
+    },
+    {
+      "method": "POST",
+      "path": "/deep_dive_ui",
+      "type": "ui",
+      "description": "Run a deep dive on the given topic. With empty topic, returns the form. With a topic, searches the knowledge base and uses LLM to write a structured report.",
+      "params": {
+        "topic": {"type": "string", "description": "Topic keyword(s) to deep dive. Required when running the dive."},
+        "input": {"type": "string", "description": "Topic from shortcut <<evo <text>. Treated as topic when topic is empty."},
+        "time_range": {"type": "string", "description": "Time range: week, month, all. Default: all."},
+        "save": {"type": "string", "description": "Whether to save the report: true or false. Default: true."}
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/history_ui",
+      "type": "ui",
+      "description": "List historical evolution reports from the knowledge-evolution collection, filtered by type.",
+      "params": {
+        "type": {"type": "string", "description": "Filter by type: all, weekly, monthly, deep_dive. Default: all."},
+        "limit": {"type": "string", "description": "Max number of reports to list. Default: 20."}
+      }
+    }
+  ]
+}
