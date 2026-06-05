@@ -580,6 +580,45 @@ def _llm_classify_relations(pairs, top_items):
     return []
 
 
+def _llm_assess_historical_connection(new_title, new_preview, old_title, old_preview):
+    """v1.1.0: Assess if a new↔old pair has a REAL hidden connection (not surface match).
+
+    Returns a short reason string if hidden, None otherwise.
+    Single-pair LLM call (not batched) for stricter judgment.
+    """
+    if not new_title or not old_title:
+        return None
+    prompt = (
+        "你是一个跨时间知识发现专家。下面是一对笔记：\n\n"
+        f"【新笔记】（这周写的）\n标题: {new_title}\n预览: {(new_preview or '')[:200]}\n\n"
+        f"【旧笔记】（更早积累的）\n标题: {old_title}\n预览: {(old_preview or '')[:200]}\n\n"
+        "你的任务是判断：这条新笔记是否能在某个深层主题上【照亮】那条旧笔记？\n\n"
+        "判断标准：\n"
+        "- 表面相似（关键词重叠、同主题、同领域）不算【隐藏关联】\n"
+        "- 真正的隐藏关联是：两者在【不同的具体场景】下讨论【同一个根本问题/方法/原则】\n"
+        "- 或者：旧笔记里埋的一个概念，被新笔记的实践所【验证/推翻/扩展】\n\n"
+        "规则：\n"
+        "- 如果只是表面相似（都在说AI、都在说创作），返回 {\"is_hidden\": false}\n"
+        "- 如果有真正的隐藏关联，用 30 字以内说明【为什么新内容能照亮旧内容】\n\n"
+        "只输出 JSON 对象：\n"
+        '{"is_hidden": true|false, "reason": "一句话中文原因（仅当 is_hidden=true 时填写）"}'
+    )
+    try:
+        result = run_prompt(prompt=prompt, timeout_ms=20000)
+        if isinstance(result, dict) and result.get("ok"):
+            text = result.get("output", "")
+            obj = _parse_json_object(text)
+            if obj and obj.get("is_hidden") and obj.get("reason"):
+                reason = str(obj["reason"]).strip()
+                if reason and len(reason) <= 80:
+                    return reason
+                elif reason:
+                    return reason[:80] + "…"
+    except Exception as e:
+        log.warn("llm_assess_historical failed", {"error": str(e)})
+    return None
+
+
 def _llm_find_cross_domain(top_items, connections):
     """v1.0.0 Layer 3: Find cross-domain bridging connections.
 
@@ -933,6 +972,9 @@ def _is_duplicate_report(existing_title, new_title, report_type, date_str):
             return date_str in existing_title
     elif report_type == "connections":
         if "知识关联发现" in existing_title and "知识关联发现" in new_title:
+            return date_str in existing_title
+    elif report_type == "historical":
+        if "历史视角" in existing_title and "历史视角" in new_title:
             return date_str in existing_title
     return False
 
@@ -1331,11 +1373,62 @@ def _build_connections_result_ui(connections, top_items, report_id):
             })
     components.append({"kind": "divider"})
     components.append({
+        "kind": "button", "label": "🕰️ 历史视角：发现新↔旧隐藏关联", "style": "default",
+        "action": {
+            "method": "GET", "path": "/historical_perspective_ui",
+            "params": {"report_id": report_id or ""},
+            "prompt": "运行历史视角分析（新内容 × 旧积累）",
+        },
+    })
+    components.append({
         "kind": "button", "label": "✅ 下一步：生成行动清单", "style": "primary",
         "action": {
             "method": "GET", "path": "/actions_ui",
             "params": {"report_id": report_id or ""},
             "prompt": "生成行动清单",
+        },
+    })
+    components.append(_ui_back_home())
+    return {"components": components}
+
+
+def _build_historical_perspective_ui(historical_pairs, candidates_evaluated, report_id):
+    """v1.1.0: Show new↔old hidden connections with LLM explanations."""
+    components = [
+        {"kind": "text", "text": "🕰️ 历史视角 - 跨时间发现", "heading": 2},
+        {"kind": "text", "text": f"扫描了 {candidates_evaluated} 组【新内容 × 旧笔记】候选，LLM 识别出 {len(historical_pairs)} 组真正隐藏的关联"},
+        {"kind": "text", "text": "💡 这些是新内容能照亮旧积累的隐藏联系——表面不相似但底层在讲同一件事", "style": "italic"},
+        {"kind": "divider"},
+    ]
+    if not historical_pairs:
+        components.append({"kind": "text", "text": "💡 没有发现跨时间的隐藏关联。可以试着用不同的时间窗口扫描。", "style": "italic"})
+    else:
+        for i, pair in enumerate(historical_pairs, 1):
+            new_title = pair["new"]["title"]
+            new_id = pair["new"]["noteId"]
+            new_date = pair["new"].get("createdAt", "")[:10]
+            old_title = pair["old"]["title"]
+            old_id = pair["old"]["noteId"]
+            old_date = pair["old"].get("createdAt", "")[:10]
+            reason = pair["reason"]
+            card_actions = []
+            if new_id:
+                card_actions.append({"label": f"📄 新笔记 ({new_date})", "open_target": f"note://{new_id}"})
+            if old_id:
+                card_actions.append({"label": f"📦 旧笔记 ({old_date})", "open_target": f"note://{old_id}"})
+            components.append({
+                "kind": "card",
+                "title": f"🕰️ 隐藏关联 #{i}",
+                "content": f"【新 · {new_date}】{new_title}\n  ↕  💡 {reason}  ↕\n【旧 · {old_date}】{old_title}",
+                "actions": card_actions,
+            })
+    components.append({"kind": "divider"})
+    components.append({
+        "kind": "button", "label": "← 返回关联发现", "style": "default",
+        "action": {
+            "method": "GET", "path": "/connections_ui",
+            "params": {"report_id": report_id or ""},
+            "prompt": "返回关联发现",
         },
     })
     components.append(_ui_back_home())
@@ -1729,6 +1822,8 @@ def handle_scan(params):
                  "preview": (t.get("preview") or "")[:300]}
                 for t in top_items[:10]
             ]
+            # v1.1.0: Cache window_start so historical_perspective knows the cutoff
+            state["cached_window_start"] = start
             set_state(state)
         except Exception as e:
             log.warn("cache_top_items failed", {"error": str(e)})
@@ -1929,6 +2024,176 @@ def handle_connections(params):
 
     log.info("connections.complete", {"count": len(connections), "cross_domain": len(cross)})
     return _build_connections_result_ui(connections, top_items, new_id or report_id)
+
+
+@router.route("GET", "/historical_perspective_ui")
+def handle_historical_perspective(params):
+    """v1.1.0: Find hidden new↔old connections across time.
+
+    Flow:
+    1. Load cached_top_items + cached_window_start from state
+    2. For each top item, search OLD notes (before window_start) by keywords
+    3. LLM assesses each candidate: is it a real hidden connection?
+    4. Save report + return UI
+    """
+    p = params or {}
+    report_id = (p.get("report_id") or "").strip()
+    if not report_id:
+        latest = _get_latest_state(("weekly", "monthly", "custom"))
+        if latest:
+            report_id = latest.get("report_id", "")
+    if not report_id:
+        return _build_error_ui("没有可用的扫描报告，请先运行扫描")
+
+    # Load state
+    state = get_state() or {}
+    cached_top = state.get("cached_top_items", [])
+    window_start = state.get("cached_window_start", "")
+
+    # Fallback: parse window_start from report note
+    if not window_start or not cached_top:
+        content = _read_note_safe(report_id)
+        if not content:
+            return _build_error_ui("无法读取报告，且本地缓存为空")
+        if not cached_top:
+            cached_top = _extract_top_items_from_note(content) or []
+        if not window_start:
+            m = re.search(r"(\d{4}-\d{2}-\d{2})", content or "")
+            if m:
+                window_start = m.group(1)
+
+    if not cached_top:
+        return _build_error_ui("缓存中没有 TOP 条目，请先运行一次扫描")
+    if not window_start:
+        return _build_error_ui("无法确定扫描时间窗口")
+
+    log.info("historical_perspective.start", {"top_items": len(cached_top), "window_start": window_start})
+
+    # v1.1.0 caps: 10 new items, top 3 old per new, max 20 LLM calls (keep handler < 2 min)
+    MAX_NEW_TO_PROCESS = 10
+    MAX_OLD_PER_NEW = 3
+    MAX_LLM_CALLS = 20
+
+    historical_pairs = []
+    candidates_evaluated = 0
+    llm_calls_used = 0
+    seen_old_ids = set()  # One old note can only appear once in the report
+
+    for new_item in cached_top[:MAX_NEW_TO_PROCESS]:
+        if llm_calls_used >= MAX_LLM_CALLS:
+            break
+        new_id = new_item.get("noteId", "")
+        new_title = new_item.get("title", "")
+        new_preview = (new_item.get("preview") or "")[:200]
+        if not new_title or not new_id:
+            continue
+
+        # Extract keywords
+        tokens = _tokenize(new_title)
+        keywords = [t for t in tokens if t not in _STOPWORDS and len(t) >= 2][:5]
+        if not keywords:
+            keywords = tokens[:3]
+        query = " ".join(keywords)
+        if not query:
+            continue
+
+        # Search OLD notes (before window_start)
+        try:
+            result = search_notes({
+                "query": query,
+                "time_filter": {"end": window_start},  # STRICTLY OLDER than report window
+                "sort_by": "relevance",
+                "limit": MAX_OLD_PER_NEW,
+            })
+            old_notes = []
+            if isinstance(result, dict) and result.get("ok"):
+                old_notes = result.get("data", {}).get("results", []) or []
+        except Exception as e:
+            log.warn("historical_search_failed", {"error": str(e), "query": query})
+            old_notes = []
+
+        for old in old_notes:
+            if llm_calls_used >= MAX_LLM_CALLS:
+                break
+            old_id = old.get("noteId", "")
+            if not old_id or old_id == new_id or old_id in seen_old_ids:
+                continue
+            seen_old_ids.add(old_id)
+            old_title = old.get("title", "")
+            old_preview = (old.get("preview") or "")[:200]
+            candidates_evaluated += 1
+            llm_calls_used += 1
+
+            # LLM assess: is this a REAL hidden connection?
+            reason = _llm_assess_historical_connection(new_title, new_preview, old_title, old_preview)
+            if reason:
+                historical_pairs.append({
+                    "new": {
+                        "title": new_title,
+                        "noteId": new_id,
+                        "createdAt": new_item.get("createdAt", ""),
+                        "preview": new_preview,
+                    },
+                    "old": {
+                        "title": old_title,
+                        "noteId": old_id,
+                        "createdAt": old.get("createdAt", ""),
+                        "preview": old_preview,
+                    },
+                    "reason": reason,
+                })
+
+    # Save report as note (with dedup via _save_report)
+    new_id = None
+    if historical_pairs:
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        title = f"🕰️ 历史视角 - {date_str}"
+        note_content_lines = [
+            f"# 🕰️ 历史视角 - {date_str}",
+            "",
+            f"**扫描时间窗口**: {window_start} 之前的所有积累",
+            f"**评估候选数**: {candidates_evaluated}",
+            f"**识别隐藏关联**: {len(historical_pairs)}",
+            "",
+            "---",
+            "",
+        ]
+        for i, pair in enumerate(historical_pairs, 1):
+            new_t = pair["new"]["title"]
+            old_t = pair["old"]["title"]
+            new_id_str = pair["new"]["noteId"]
+            old_id_str = pair["old"]["noteId"]
+            reason = pair["reason"]
+            new_d = pair["new"].get("createdAt", "")[:10]
+            old_d = pair["old"].get("createdAt", "")[:10]
+            note_content_lines.extend([
+                f"## 🕰️ 隐藏关联 #{i}",
+                "",
+                f"**【新 · {new_d}】** [{new_t}](note://{new_id_str})",
+                "",
+                f"💡 {reason}",
+                "",
+                f"**【旧 · {old_d}】** [{old_t}](note://{old_id_str})",
+                "",
+                "---",
+                "",
+            ])
+        note_content = "\n".join(note_content_lines)
+        new_id = _save_report(title, note_content, "historical", date_str)
+        # Cache for downstream
+        try:
+            state = get_state() or {}
+            state["cached_historical"] = historical_pairs
+            set_state(state)
+        except Exception as e:
+            log.warn("cache_historical failed", {"error": str(e)})
+
+    log.info("historical_perspective.complete", {
+        "candidates": candidates_evaluated,
+        "llm_calls": llm_calls_used,
+        "pairs": len(historical_pairs),
+    })
+    return _build_historical_perspective_ui(historical_pairs, candidates_evaluated, new_id or report_id)
 
 
 @router.route("GET", "/actions_ui")

@@ -29,6 +29,15 @@
     },
     {
       "method": "GET",
+      "path": "/historical_perspective_ui",
+      "type": "ui",
+      "description": "v1.1.0: Find hidden connections between the scan's TOP items and your OLD knowledge base accumulation. Each TOP item is matched against old notes (before the scan window), and LLM assesses whether the match is a real hidden connection (not just surface similarity). Capped at 20 LLM calls (~1.5-2 min).",
+      "params": {
+        "report_id": {"type": "string", "description": "Optional scan report note id. If empty, uses the latest scan from local state."}
+      }
+    },
+    {
+      "method": "GET",
       "path": "/actions_ui",
       "type": "ui",
       "description": "Generate a 3-7 item action list with 3 action types (supplement/create/connect).",

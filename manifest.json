@@ -8,12 +8,12 @@
   },
   "icon": "🧬",
   "type": "aapp",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "developer": "violin",
-  "description": "Three-step structured knowledge base evolution: scan → connection discovery → action list. v1.0.0: 4-dimension quality scoring, 3-layer connection discovery, 3 action execution paths, create-only with references.",
+  "description": "Three-step structured knowledge base evolution: scan → connection discovery → action list. v1.0.0: 4-dimension quality scoring, 3-layer connection discovery, 3 action execution paths, create-only with references. v1.1.0: 🕰️ Historical Perspective — new content as trigger to find hidden connections in your OLD accumulation.",
   "descriptionI18n": {
-    "zh-CN": "三步结构化知识库进化：扫描 → 关联发现 → 行动清单。支持周度快照、月度体检、专题深挖、历史报告。",
-    "en-US": "Three-step structured knowledge base evolution: scan → connection discovery → action list. Supports weekly snapshot, monthly health check, topic deep dive, and history view."
+    "zh-CN": "三步结构化知识库进化：扫描 → 关联发现 → 行动清单。v1.1.0 新增 🕰️ 历史视角——让新内容主动去照亮你的旧积累。",
+    "en-US": "Three-step structured knowledge base evolution: scan → connection discovery → action list. v1.1.0 adds 🕰️ Historical Perspective — let new content trigger hidden connections in your old accumulation."
   },
   "runtime": {
     "type": "embedded"
